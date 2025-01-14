@@ -79,7 +79,7 @@ class ImageService {
       }
 
       var uri = Uri.parse(
-          'https://htp-model-umairahmedyounas1987gmailcoms-projects.vercel.app/analyze-image');
+          'YOUR MODEL ENDPOINT HERE');
       var response = await http.post(uri,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'imageUrl': imageUrl}));
