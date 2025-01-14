@@ -1,0 +1,203 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
+import 'package:htp/Utils/Utils.dart';
+import 'package:htp/Widgets/CRoundButton.dart';
+import 'package:http/http.dart' as http;
+
+class AddPosts extends StatefulWidget {
+  const AddPosts({super.key});
+
+  @override
+  State<AddPosts> createState() => _AddProductState();
+}
+
+class _AddProductState extends State<AddPosts> {
+  final databaseRef = FirebaseDatabase.instance.ref('products');
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController descController = TextEditingController();
+  final TextEditingController priceController = TextEditingController();
+
+  Uint8List? _selectedFileBytes;
+  String? _selectedFileName;
+  String? _uploadedFileUrl;
+  bool _isUploading = false;
+
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result =
+          await FilePicker.platform.pickFiles(type: FileType.image);
+
+      if (result != null) {
+        setState(() {
+          _selectedFileBytes = result.files.first.bytes;
+          _selectedFileName = result.files.first.name;
+        });
+      } else {
+        Utils().ToastMessage('No image selected');
+      }
+    } catch (e) {
+      Utils().ToastMessage('Error selecting file: $e');
+    }
+  }
+
+  Future<void> _uploadToServer() async {
+    if (_selectedFileBytes == null || _selectedFileName == null) {
+      Utils().ToastMessage('Please select an image first');
+      return;
+    }
+
+    setState(() {
+      _isUploading = true;
+    });
+
+    try {
+      var uri =
+          Uri.parse('https://umairpersonalfileuploader-self.vercel.app/upload');
+      var request = http.MultipartRequest('POST', uri);
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          _selectedFileBytes!,
+          filename: _selectedFileName,
+        ),
+      );
+
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        final responseBody = await response.stream.bytesToString();
+        final jsonResponse = jsonDecode(responseBody);
+        setState(() {
+          _uploadedFileUrl = jsonResponse['imageUrl'];
+        });
+        Utils().ToastMessage('Image uploaded successfully');
+      } else {
+        Utils().ToastMessage('Image upload failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      Utils().ToastMessage('Error uploading file: $e');
+    } finally {
+      setState(() {
+        _isUploading = false;
+      });
+    }
+  }
+
+  Future<void> _uploadProduct() async {
+    String id = DateTime.now().millisecondsSinceEpoch.toString();
+    String? uid = FirebaseAuth.instance.currentUser?.uid;
+
+
+    try {
+
+
+      String imageUrl = _uploadedFileUrl ?? 'default_animal_icon_url';
+
+      await databaseRef.child(id).set({
+        'id': id,
+        'uid': uid,
+        'image': imageUrl,
+        'name': nameController.text.trim(),
+        'description': descController.text.trim(),
+        'price': priceController.text.trim(),
+      });
+
+      Utils().ToastMessage('Product added successfully');
+      nameController.clear();
+      descController.clear();
+      priceController.clear();
+      setState(() {
+        _selectedFileBytes = null;
+        _uploadedFileUrl = null;
+      });
+    } catch (e) {
+      Utils().ToastMessage('Error: $e');
+    }
+    }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Add Product'),
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: [
+              GestureDetector(
+                onTap: _pickFile,
+                child: Container(
+                  height: 150,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: _selectedFileBytes == null
+                      ? const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.pets_outlined,
+                                size: 50, color: Colors.grey),
+                            Text('Tap to select an image',
+                                style: TextStyle(color: Colors.grey)),
+                          ],
+                        )
+                      : Image.memory(_selectedFileBytes!, fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  hintText: 'Product Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                maxLines: 5,
+                controller: descController,
+                decoration: const InputDecoration(
+                  hintText: 'Description',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: priceController,
+                decoration: const InputDecoration(
+                  hintText: 'Price',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 20),
+             CRoundButton(
+  buttonText: 'Upload Image',
+  onTap: () {
+    _uploadToServer();
+  },
+  loading: _isUploading, // Show loader if uploading
+),
+
+              const SizedBox(height: 20),
+              CRoundButton(
+                buttonText: 'Add Product',
+                onTap: _uploadProduct,
+                
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
